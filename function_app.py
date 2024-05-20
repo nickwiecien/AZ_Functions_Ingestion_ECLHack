@@ -540,11 +540,11 @@ def generate_extract_embeddings(activitypayload: str):
         # KWIECIEN UPDATE 05/20/2024
         file_parts = updated_record['sourcefile'].split('/')
 
-        site_id = file_parts[0]
-        view_id = file_parts[1]
-        year = file_parts[2]
-        month = file_parts[3]
-        day = file_parts[4]
+        site_id = file_parts[1]
+        view_id = file_parts[2]
+        year = file_parts[3]
+        month = file_parts[4]
+        day = file_parts[5]
 
         updated_record['site_id'] = site_id
         updated_record['view_id'] = view_id
