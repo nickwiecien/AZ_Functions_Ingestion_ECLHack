@@ -39,13 +39,14 @@ def pdf_orchestrator(context):
     chunks_container = payload.get("chunks_container")
     doc_intel_results_container = payload.get("doc_intel_results_container")
     extract_container = payload.get("extract_container")
+    prefix_path = payload.get("prefix_path")
 
     # Initialize lists to store parent and extracted files
     parent_files = []
     extracted_files = []
     
     # Get the list of files in the source container
-    files = yield context.call_activity("get_source_files", json.dumps({'source_container': source_container, 'extension': '.pdf', 'prefix': ''}))
+    files = yield context.call_activity("get_source_files", json.dumps({'source_container': source_container, 'extension': '.pdf', 'prefix': prefix_path}))
 
     # For each PDF file, split it into single-page chunks and save to chunks container
     split_pdf_tasks = []
