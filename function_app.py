@@ -72,6 +72,7 @@ def pdf_orchestrator(context):
         extract_pdf_tasks.append(context.call_activity("process_pdf_with_document_intelligence", json.dumps({'child': pdf['child'], 'parent': pdf['parent'], 'chunks_container': chunks_container, 'doc_intel_results_container': doc_intel_results_container, 'extracts_container': extract_container})))
     # Execute all the extract PDF tasks and get the results
     extracted_pdf_files = yield context.task_all(extract_pdf_tasks)
+    extracted_pdf_files = [x for x in extracted_pdf_files if x is not None]
 
     # For each extracted PDF file, generate embeddings and save the results
     generate_embeddings_tasks = []
@@ -361,57 +362,61 @@ def process_pdf_with_document_intelligence(activitypayload: str):
     if not processed:
         # Extract the PDF file with AFR, save the AFR results, and save the extract results
 
-        # Download the PDF file
-        pdf_data = pdf_blob_client.download_blob().readall()
-        # Analyze the PDF file with Document Intelligence
-        doc_intel_result = analyze_pdf(pdf_data)
+        try:
 
-        # Get a BlobClient object for the Document Intelligence results file
-        doc_intel_result_client = doc_intel_results_container_client.get_blob_client(updated_filename)
+            # Download the PDF file
+            pdf_data = pdf_blob_client.download_blob().readall()
+            # Analyze the PDF file with Document Intelligence
+            doc_intel_result = analyze_pdf(pdf_data)
 
-        # Upload the Document Intelligence results to the Document Intelligence results container
-        doc_intel_result_client.upload_blob(json.dumps(doc_intel_result), overwrite=True)
+            # Get a BlobClient object for the Document Intelligence results file
+            doc_intel_result_client = doc_intel_results_container_client.get_blob_client(updated_filename)
 
-        # Extract the results from the Document Intelligence results
-        page_map = extract_results(doc_intel_result, updated_filename)
+            # Upload the Document Intelligence results to the Document Intelligence results container
+            doc_intel_result_client.upload_blob(json.dumps(doc_intel_result), overwrite=True)
 
-        # Extract the page number from the child file name
-        page_number = child.split('_')[-1]
-        page_number = page_number.replace('.pdf', '')
-        # Get the content from the page map
-        content = page_map[0][1]
+            # Extract the results from the Document Intelligence results
+            page_map = extract_results(doc_intel_result, updated_filename)
 
-        # Generate a unique ID for the record
-        id_str = child
-        hash_object = hashlib.sha256()
-        hash_object.update(id_str.encode('utf-8'))
-        id = hash_object.hexdigest()
+            # Extract the page number from the child file name
+            page_number = child.split('_')[-1]
+            page_number = page_number.replace('.pdf', '')
+            # Get the content from the page map
+            content = page_map[0][1]
 
-        # Download the PDF file as a stream
-        pdf_stream_downloader = (pdf_blob_client.download_blob())
+            # Generate a unique ID for the record
+            id_str = child
+            hash_object = hashlib.sha256()
+            hash_object.update(id_str.encode('utf-8'))
+            id = hash_object.hexdigest()
 
-        # Calculate the MD5 hash of the PDF file
-        md5_hash = hashlib.md5()
-        for byte_block in iter(lambda: pdf_stream_downloader.read(4096), b""):
-            md5_hash.update(byte_block)
-        checksum = md5_hash.hexdigest()
+            # Download the PDF file as a stream
+            pdf_stream_downloader = (pdf_blob_client.download_blob())
 
-        # Create a record for the PDF file
-        record = {
-            'content': content,
-            'sourcefile': parent,
-            'sourcepage': child,
-            'pagenumber': page_number,
-            'category': 'manual',
-            'id': str(id),
-            'checksum': checksum
-        }
+            # Calculate the MD5 hash of the PDF file
+            md5_hash = hashlib.md5()
+            for byte_block in iter(lambda: pdf_stream_downloader.read(4096), b""):
+                md5_hash.update(byte_block)
+            checksum = md5_hash.hexdigest()
 
-        # Get a BlobClient object for the extracts file
-        extract_blob_client = extracts_container_client.get_blob_client(blob=updated_filename)
+            # Create a record for the PDF file
+            record = {
+                'content': content,
+                'sourcefile': parent,
+                'sourcepage': child,
+                'pagenumber': page_number,
+                'category': 'manual',
+                'id': str(id),
+                'checksum': checksum
+            }
 
-        # Upload the record to the extracts container
-        extract_blob_client.upload_blob(json.dumps(record), overwrite=True)
+            # Get a BlobClient object for the extracts file
+            extract_blob_client = extracts_container_client.get_blob_client(blob=updated_filename)
+
+            # Upload the record to the extracts container
+            extract_blob_client.upload_blob(json.dumps(record), overwrite=True)
+        except Exception as e:
+            return None
 
     # Return the updated file name
     return updated_filename
@@ -538,7 +543,7 @@ def generate_extract_embeddings(activitypayload: str):
         updated_record = extract_data
         updated_record['embeddings'] = embeddings
 
-        # KWIECIEN UPDATE 05/20/2024
+        # # KWIECIEN UPDATE 05/20/2024
         file_parts = updated_record['sourcefile'].split('/')
 
         site_id = file_parts[1]
