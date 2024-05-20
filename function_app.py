@@ -48,6 +48,9 @@ def pdf_orchestrator(context):
     # Get the list of files in the source container
     files = yield context.call_activity("get_source_files", json.dumps({'source_container': source_container, 'extension': '.pdf', 'prefix': prefix_path}))
 
+    # KWIECIEN FILTER 05/20/2024
+    files = [x for x in files if '/2024/' in x]
+
     # For each PDF file, split it into single-page chunks and save to chunks container
     split_pdf_tasks = []
     for file in files:
