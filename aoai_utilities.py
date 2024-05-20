@@ -4,7 +4,7 @@ import time
 import json
 import openai
 import os
-
+import logging
 
 def generate_embeddings(text):
     """
@@ -33,7 +33,10 @@ def generate_embeddings(text):
             processed = True
         except Exception as e:  # Catch any exceptions and retry after a delay
             print(e)
+            logging.info('Embeddings Error: ' + str(e))
             time.sleep(5)
+            if 'maximum context length' in str(e):
+                text = text[:int(len(text)*0.95)]
 
     # Extract embeddings from the response
     embeddings = response['data'][0]['embedding']
