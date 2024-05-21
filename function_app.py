@@ -107,9 +107,6 @@ def json_orchestrator(context):
     # Get the list of files in the source container
     files = yield context.call_activity("get_source_files", json.dumps({'source_container': source_container, 'extension': '.json', 'prefix': prefix_path}))
 
-    # KWIECIEN FILTER 05/20/2024
-    files = [x for x in files if '/2024/' in x]
-
     # For each JSON doc, process it, create a concatenated version, and save the results to the extracts container
     extract_json_tasks = []
     for file in files:
