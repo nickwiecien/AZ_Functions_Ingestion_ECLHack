@@ -431,31 +431,31 @@ def process_json_record(activitypayload: str):
     # Get a BlobClient object for the JSON file
     json_blob_client = source_container_client.get_blob_client(blob=updated_filename)
     # Check if the processed JSON file exists
-    if json_blob_client.exists():
+    # if json_blob_client.exists():
 
-        # Get a BlobClient object for the extracts file
-        extract_blob_client = extracts_container_client.get_blob_client(blob=updated_filename)
+    #     # Get a BlobClient object for the extracts file
+    #     extract_blob_client = extracts_container_client.get_blob_client(blob=updated_filename)
 
-        # If the extracts file exists
-        if extract_blob_client.exists():
+    #     # If the extracts file exists
+    #     if extract_blob_client.exists():
 
-            # Download the JSON file as a stream
-            json_stream_downloader = (extract_blob_client.download_blob())
+    #         # Download the JSON file as a stream
+    #         json_stream_downloader = (extract_blob_client.download_blob())
 
-            # Calculate the MD5 hash of the PDF file
-            md5_hash = hashlib.md5()
-            for byte_block in iter(lambda: json_stream_downloader.read(4096), b""):
-                md5_hash.update(byte_block)
-            checksum = md5_hash.hexdigest()
+    #         # Calculate the MD5 hash of the PDF file
+    #         md5_hash = hashlib.md5()
+    #         for byte_block in iter(lambda: json_stream_downloader.read(4096), b""):
+    #             md5_hash.update(byte_block)
+    #         checksum = md5_hash.hexdigest()
 
-            # Load the extracts file as a JSON string
-            extract_data = json.loads((extract_blob_client.download_blob().readall()).decode('utf-8'))
+    #         # Load the extracts file as a JSON string
+    #         extract_data = json.loads((extract_blob_client.download_blob().readall()).decode('utf-8'))
 
-            # If the checksum in the extracts file matches the checksum of the PDF file
-            if 'checksum' in extract_data.keys():
-                if extract_data['checksum']==checksum:
-                    # Set the processed flag to True
-                    processed = True
+    #         # If the checksum in the extracts file matches the checksum of the PDF file
+    #         if 'checksum' in extract_data.keys():
+    #             if extract_data['checksum']==checksum:
+    #                 # Set the processed flag to True
+    #                 processed = True
 
     # If the PDF file has not been processed
     if not processed:
