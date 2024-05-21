@@ -89,6 +89,65 @@ def pdf_orchestrator(context):
     return json.dumps({'parent_files': parent_files, 'processed_documents': processed_documents})
 
 
+# Orchestrators
+@app.orchestration_trigger(context_name="context")
+def pdf_orchestrator_generic(context):
+    
+    # Get the input payload from the context
+    payload = context.get_input()
+    
+    # Extract the container names from the payload
+    source_container = payload.get("source_container")
+    chunks_container = payload.get("chunks_container")
+    doc_intel_results_container = payload.get("doc_intel_results_container")
+    extract_container = payload.get("extract_container")
+    prefix_path = payload.get("prefix_path")
+
+    # Initialize lists to store parent and extracted files
+    parent_files = []
+    extracted_files = []
+    
+    # Get the list of files in the source container
+    files = yield context.call_activity("get_source_files", json.dumps({'source_container': source_container, 'extension': '.pdf', 'prefix': prefix_path}))
+
+    # For each PDF file, split it into single-page chunks and save to chunks container
+    split_pdf_tasks = []
+    for file in files:
+        # Append the file to the parent_files list
+        parent_files.append(file)
+        # Create a task to split the PDF file and append it to the split_pdf_tasks list
+        split_pdf_tasks.append(context.call_activity("split_pdf_files", json.dumps({'source_container': source_container, 'chunks_container': chunks_container, 'file': file})))
+    # Execute all the split PDF tasks and get the results
+    split_pdf_files = yield context.task_all(split_pdf_tasks)
+    # Flatten the list of split PDF files
+    split_pdf_files = [item for sublist in split_pdf_files for item in sublist]
+
+    # Convert the split PDF files from JSON strings to Python dictionaries
+    pdf_chunks = [json.loads(x) for x in split_pdf_files]
+
+    # For each PDF chunk, process it with Document Intelligence and save the results to the extracts container
+    extract_pdf_tasks = []
+    for pdf in pdf_chunks:
+        # Append the child file to the extracted_files list
+        extracted_files.append(pdf['child'])
+        # Create a task to process the PDF chunk and append it to the extract_pdf_tasks list
+        extract_pdf_tasks.append(context.call_activity("process_pdf_with_document_intelligence", json.dumps({'child': pdf['child'], 'parent': pdf['parent'], 'chunks_container': chunks_container, 'doc_intel_results_container': doc_intel_results_container, 'extracts_container': extract_container})))
+    # Execute all the extract PDF tasks and get the results
+    extracted_pdf_files = yield context.task_all(extract_pdf_tasks)
+    extracted_pdf_files = [x for x in extracted_pdf_files if x is not None]
+
+    # For each extracted PDF file, generate embeddings and save the results
+    generate_embeddings_tasks = []
+    for file in extracted_pdf_files:
+        # Create a task to generate embeddings for the extracted file and append it to the generate_embeddings_tasks list
+        generate_embeddings_tasks.append(context.call_activity("generate_extract_embeddings", json.dumps({'extract_container': extract_container, 'file': file})))
+    # Execute all the generate embeddings tasks and get the results
+    processed_documents = yield context.task_all(generate_embeddings_tasks)
+    
+    # Return the list of parent files and processed documents as a JSON string
+    return json.dumps({'parent_files': parent_files, 'processed_documents': processed_documents})
+
+
 @app.orchestration_trigger(context_name="context")
 def json_orchestrator(context):
     
@@ -685,20 +744,20 @@ def generate_extract_embeddings(activitypayload: str):
         updated_record = extract_data
         updated_record['embeddings'] = embeddings
 
-        # # KWIECIEN UPDATE 05/20/2024
-        file_parts = updated_record['sourcefile'].split('/')
+        # # # KWIECIEN UPDATE 05/20/2024
+        # file_parts = updated_record['sourcefile'].split('/')
 
-        site_id = file_parts[1]
-        view_id = file_parts[2]
-        year = file_parts[3]
-        month = file_parts[4]
-        day = file_parts[5]
+        # site_id = file_parts[1]
+        # view_id = file_parts[2]
+        # year = file_parts[3]
+        # month = file_parts[4]
+        # day = file_parts[5]
 
-        updated_record['site_id'] = site_id
-        updated_record['view_id'] = view_id
-        updated_record['year'] = year
-        updated_record['month'] = month
-        updated_record['day'] = day
+        # updated_record['site_id'] = site_id
+        # updated_record['view_id'] = view_id
+        # updated_record['year'] = year
+        # updated_record['month'] = month
+        # updated_record['day'] = day
 
         # Add these fields to your extracted JSON
 
