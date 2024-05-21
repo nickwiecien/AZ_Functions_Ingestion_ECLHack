@@ -88,6 +88,48 @@ def pdf_orchestrator(context):
     # Return the list of parent files and processed documents as a JSON string
     return json.dumps({'parent_files': parent_files, 'processed_documents': processed_documents})
 
+
+@app.orchestration_trigger(context_name="context")
+def json_orchestrator(context):
+    
+    # Get the input payload from the context
+    payload = context.get_input()
+    
+    # Extract the container names from the payload
+    source_container = payload.get("source_container")
+    extract_container = payload.get("extract_container")
+    prefix_path = payload.get("prefix_path")
+    retention_fields = payload.get("retention_fields")
+
+    # Initialize lists to store parent and extracted files
+    parent_files = []
+    
+    # Get the list of files in the source container
+    files = yield context.call_activity("get_source_files", json.dumps({'source_container': source_container, 'extension': '.json', 'prefix': prefix_path}))
+
+    # KWIECIEN FILTER 05/20/2024
+    files = [x for x in files if '/2024/' in x]
+
+    # For each JSON doc, process it, create a concatenated version, and save the results to the extracts container
+    extract_json_tasks = []
+    for file in files:
+        # Create a task to process the PDF chunk and append it to the extract_pdf_tasks list
+        extract_json_tasks.append(context.call_activity("process_json_record", json.dumps({'file': file, 'source_container': source_container, 'extract_container': extract_container, 'retain_fields': retention_fields})))
+    # Execute all the extract PDF tasks and get the results
+    extracted_json_files = yield context.task_all(extract_json_tasks)
+    extracted_json_files = [x for x in extracted_json_files if x is not None]
+
+    # For each extracted PDF file, generate embeddings and save the results
+    generate_embeddings_tasks = []
+    for file in extracted_json_files:
+        # Create a task to generate embeddings for the extracted file and append it to the generate_embeddings_tasks list
+        generate_embeddings_tasks.append(context.call_activity("generate_extract_embeddings", json.dumps({'extract_container': extract_container, 'file': file})))
+    # Execute all the generate embeddings tasks and get the results
+    processed_documents = yield context.task_all(generate_embeddings_tasks)
+    
+    # Return the list of parent files and processed documents as a JSON string
+    return json.dumps({'parent_files': parent_files, 'processed_documents': processed_documents})
+
 @app.orchestration_trigger(context_name="context")
 def mp3_orchestrator(context):
     
@@ -293,6 +335,106 @@ def split_pdf_files(activitypayload: str):
 
     # Return the list of PDF chunks
     return pdf_chunks
+
+@app.activity_trigger(input_name="activitypayload")
+def process_json_record(activitypayload: str):
+    """
+    Process a JSON file and retain selected fields.
+
+    Args:
+        activitypayload (str): The payload containing information about the JSON file.
+
+    Returns:
+        str: The updated filename of the processed JSON file.
+    """
+
+    # Load the activity payload as a JSON string
+    data = json.loads(activitypayload)
+
+    # Extract the child file name, parent file name, and container names from the payload
+    file = data.get("file")
+    source_container = data.get("source_container")
+    extracts_container = data.get("extract_container")
+    retain_fields = data.get("retain_fields")
+
+    # Create a BlobServiceClient object which will be used to create a container client
+    blob_service_client = BlobServiceClient.from_connection_string(os.environ['STORAGE_CONN_STR'])
+    source_container_client = blob_service_client.get_container_client(container=source_container)
+    extracts_container_client = blob_service_client.get_container_client(container=extracts_container)
+
+    # Get a BlobClient object for the JSON file
+    json_blob_client = source_container_client.get_blob_client(blob=file)
+
+    # Initialize a flag to indicate whether the PDF file has been processed
+    processed = False
+
+    # Hold filename for the JSON file
+    updated_filename = file
+
+    # Get a BlobClient object for the Document Intelligence results file
+    json_blob_client = source_container_client.get_blob_client(blob=updated_filename)
+    # Check if the Document Intelligence results file exists
+    if json_blob_client.exists():
+
+        # Get a BlobClient object for the extracts file
+        extract_blob_client = extracts_container_client.get_blob_client(blob=updated_filename)
+
+        # If the extracts file exists
+        if extract_blob_client.exists():
+
+            # Download the JSON file as a stream
+            json_stream_downloader = (extract_blob_client.download_blob())
+
+            # Calculate the MD5 hash of the PDF file
+            md5_hash = hashlib.md5()
+            for byte_block in iter(lambda: json_stream_downloader.read(4096), b""):
+                md5_hash.update(byte_block)
+            checksum = md5_hash.hexdigest()
+
+            # Load the extracts file as a JSON string
+            extract_data = json.loads((extract_blob_client.download_blob().readall()).decode('utf-8'))
+
+            # If the checksum in the extracts file matches the checksum of the PDF file
+            if 'checksum' in extract_data.keys():
+                if extract_data['checksum']==checksum:
+                    # Set the processed flag to True
+                    processed = True
+
+    # If the PDF file has not been processed
+    if not processed:
+
+        try:
+
+            # Download the PDF file
+            json_data = json_blob_client.download_blob().readall()
+
+            content = ""
+            for field in retain_fields:
+                if field in json_data.keys():
+                    content += field + ': ' + json_data[field]
+            
+
+            # Create a record for the PDF file
+            record = {
+                'content': content,
+                'sourcefile': file,
+                'sourcepage': file,
+                'pagenumber': 0,
+                'category': 'manual',
+                'id': str(id),
+                'checksum': checksum
+            }
+
+            # Get a BlobClient object for the extracts file
+            extract_blob_client = extracts_container_client.get_blob_client(blob=updated_filename)
+
+            # Upload the record to the extracts container
+            extract_blob_client.upload_blob(json.dumps(record), overwrite=True)
+        except Exception as e:
+            return None
+
+    # Return the updated file name
+    return updated_filename
     
 @app.activity_trigger(input_name="activitypayload")
 def process_pdf_with_document_intelligence(activitypayload: str):
