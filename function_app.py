@@ -412,6 +412,7 @@ def process_json_record(activitypayload: str):
     source_container = data.get("source_container")
     extracts_container = data.get("extract_container")
     retain_fields = data.get("retain_fields")
+    retain_fields = retain_fields.split(',')
 
     # Create a BlobServiceClient object which will be used to create a container client
     blob_service_client = BlobServiceClient.from_connection_string(os.environ['STORAGE_CONN_STR'])
@@ -427,9 +428,9 @@ def process_json_record(activitypayload: str):
     # Hold filename for the JSON file
     updated_filename = file
 
-    # Get a BlobClient object for the Document Intelligence results file
+    # Get a BlobClient object for the JSON file
     json_blob_client = source_container_client.get_blob_client(blob=updated_filename)
-    # Check if the Document Intelligence results file exists
+    # Check if the processed JSON file exists
     if json_blob_client.exists():
 
         # Get a BlobClient object for the extracts file
@@ -465,21 +466,29 @@ def process_json_record(activitypayload: str):
             json_data = json_blob_client.download_blob().readall()
 
             content = ""
+            record = {}
+            content_pieces = []
             for field in retain_fields:
                 if field in json_data.keys():
-                    content += field + ': ' + json_data[field]
+                    curr_str = field + ": " + json_data[field]
+                    content_pieces.append(curr_str)
+                    record[field] = json_data[field]
+            record['content'] = ' | '.join(content_pieces)
+            record['id'] = str(id)
+            record['checksum'] = checksum
+
             
 
-            # Create a record for the PDF file
-            record = {
-                'content': content,
-                'sourcefile': file,
-                'sourcepage': file,
-                'pagenumber': 0,
-                'category': 'manual',
-                'id': str(id),
-                'checksum': checksum
-            }
+            # # Create a record for the PDF file
+            # record = {
+            #     'content': content,
+            #     'sourcefile': file,
+            #     'sourcepage': file,
+            #     'pagenumber': 0,
+            #     'category': 'manual',
+            #     'id': str(id),
+            #     'checksum': checksum
+            # }
 
             # Get a BlobClient object for the extracts file
             extract_blob_client = extracts_container_client.get_blob_client(blob=updated_filename)
