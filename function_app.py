@@ -463,7 +463,8 @@ def process_json_record(activitypayload: str):
         try:
 
             # Download the PDF file
-            json_data = json_blob_client.download_blob().readall()
+            json_data = json_blob_client.download_blob().readall().decode('utf-8')
+            json_data = json.loads(json_data)
 
             content = ""
             record = {}
@@ -474,8 +475,7 @@ def process_json_record(activitypayload: str):
                     content_pieces.append(curr_str)
                     record[field] = json_data[field]
             record['content'] = ' | '.join(content_pieces)
-            record['id'] = str(id)
-            record['checksum'] = checksum
+            record['id'] = file.replace('.json', '')
 
             
 
